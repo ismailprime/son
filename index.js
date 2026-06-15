@@ -60,18 +60,16 @@ const LINK_REGEX = /(https?:\/\/|www\.)/i;
 
 const BAD_WORDS = [
   "amk","oç","siktir","fuck","shit","piç","aq","amq","yarrak",
-  "orospu","mal","salak","gerizekalı","aptal","bitch","dick",
-  "wtf","ass","bok","pezevenk","gavat","ibne","dangalak"
+  "orospu","mal","salak","gerizekalı","aptal","bitch",
+  "dick","ass","bok","gavat","pezevenk","ibne"
 ];
 
 // ================= ROLE SYSTEM =================
 
 async function updateRoles(member, xpValue) {
 
-  const g = member.guild;
-
   const roles = Object.values(ROLES)
-    .map(id => g.roles.cache.get(id))
+    .map(id => member.guild.roles.cache.get(id))
     .filter(Boolean);
 
   await member.roles.remove(roles).catch(()=>{});
@@ -83,7 +81,7 @@ async function updateRoles(member, xpValue) {
   if (xpValue >= 1000) return member.roles.add(ROLES.caylak).catch(()=>{});
 }
 
-// ================= MESSAGE =================
+// ================= MESSAGE SYSTEM =================
 
 client.on("messageCreate", async (message) => {
 
@@ -100,6 +98,7 @@ client.on("messageCreate", async (message) => {
 
   // 🔗 LINK ENGEL
   if (LINK_REGEX.test(txt)) {
+
     await message.delete().catch(()=>{});
 
     if (message.member?.moderatable)
@@ -108,7 +107,7 @@ client.on("messageCreate", async (message) => {
     return message.channel.send("🔗 Link → 1 saat mute");
   }
 
-  // 💬 KÜFÜR (3 = 5 DK MUTE)
+  // 💬 KÜFÜR SİSTEMİ
   if (BAD_WORDS.some(w => txt.includes(w))) {
 
     await message.delete().catch(()=>{});
@@ -116,7 +115,6 @@ client.on("messageCreate", async (message) => {
     curse[id]++;
 
     if (curse[id] >= 3) {
-
       curse[id] = 0;
 
       if (message.member?.moderatable)
@@ -128,7 +126,7 @@ client.on("messageCreate", async (message) => {
     return message.channel.send(`⚠️ Küfür: ${curse[id]}/3`);
   }
 
-  // 💰 XP + PARA (2 DK SABİT)
+  // 💰 XP + PARA (2 DK)
   if (now - cooldown[id] >= 120000) {
 
     xp[id] += Math.floor(Math.random() * 21) + 10;
@@ -150,7 +148,7 @@ client.on("messageCreate", async (message) => {
     return message.reply(`💰 Para: ${money[id] || 0}`);
 });
 
-// ================= OWNER XP/PARA =================
+// ================= OWNER KOMUTLARI =================
 
 client.on("messageCreate", async (message) => {
 
@@ -158,15 +156,15 @@ client.on("messageCreate", async (message) => {
 
   const args = message.content.split(" ");
   const user = message.mentions.members.first();
-  const amount = parseInt(args[2]);
+  const amount = Number(args[2]);
 
   // ⭐ XP VER
   if (message.content.startsWith("!xpver")) {
 
     if (message.author.id !== OWNER_ID)
-      return message.reply("❌ Yetkin yok");
+      return;
 
-    if (!user || !amount)
+    if (!user || !amount || isNaN(amount))
       return message.reply("!xpver @kişi 100");
 
     xp[user.id] = (xp[user.id] || 0) + amount;
@@ -175,23 +173,23 @@ client.on("messageCreate", async (message) => {
 
     updateRoles(user, xp[user.id]);
 
-    return message.channel.send(`⭐ XP verildi: ${amount}`);
+    return message.channel.send(`⭐ ${amount} XP verildi`);
   }
 
   // 💰 PARA VER
   if (message.content.startsWith("!paraver")) {
 
     if (message.author.id !== OWNER_ID)
-      return message.reply("❌ Yetkin yok");
+      return;
 
-    if (!user || !amount)
+    if (!user || !amount || isNaN(amount))
       return message.reply("!paraver @kişi 100");
 
     money[user.id] = (money[user.id] || 0) + amount;
 
     save("./data/money.json", money);
 
-    return message.channel.send(`💰 Para verildi: ${amount}`);
+    return message.channel.send(`💰 ${amount} para verildi`);
   }
 });
 
@@ -230,9 +228,9 @@ client.on("messageCreate", async (message) => {
 
   setTimeout(() => {
 
-    const list = giveaways[msg.id] || [];
+    const list = giveaways[msg.id];
 
-    if (list.length === 0)
+    if (!list || list.length === 0)
       return message.channel.send("❌ Katılım yok");
 
     const winner = list[Math.floor(Math.random() * list.length)];
@@ -260,12 +258,6 @@ client.on("interactionCreate", async (i) => {
 
   return i.reply({ content: "🎉 Katıldın!", ephemeral: true });
 });
-
-// ================= SAVE =================
-
-setInterval(() => {
-  save("./data/giveaways.json", giveaways);
-}, 30000);
 
 // ================= LOGIN =================
 

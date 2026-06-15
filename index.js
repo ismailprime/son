@@ -290,7 +290,7 @@ client.on("interactionCreate", async (i) => {
 
   if (i.customId === "buy_senor") {
 
-    if (money[id] < 50000)
+    if (money[id] < 250000)
       return i.reply({ content:"❌ para yok", ephemeral:true });
 
     money[id] -= 50000;

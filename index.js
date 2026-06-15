@@ -4,7 +4,6 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle
@@ -54,20 +53,19 @@ function save(file, data) {
 }
 
 let xp = load("./data/xp.json", {});
+let money = load("./data/money.json", {});
 let cooldown = {};
 let curse = {};
 let giveaways = {};
-let boostActive = {};
+let boost = {};
 
-// ================= BAD WORDS =================
+// ================= RULES =================
 
 const BAD_WORDS = [
   "amk","oç","aq","amq","siktir","sik","orospu","piç",
   "mal","salak","gerizekalı","aptal",
   "fuck","shit","bitch","ass","dick","wtf"
 ];
-
-// ================= LINK ENGEL =================
 
 const LINK_REGEX = /(https?:\/\/|www\.)/i;
 
@@ -81,13 +79,7 @@ async function updateRoles(member, xpValue) {
 
   await member.roles.remove(roles).catch(()=>{});
 
-  if (xpValue >= 50000) {
-    await member.roles.add(ROLES.special).catch(()=>{});
-    xp[member.id] = 0;
-    save("./data/xp.json", xp);
-    return;
-  }
-
+  if (xpValue >= 50000) return member.roles.add(ROLES.special).catch(()=>{});
   if (xpValue >= 25000) return member.roles.add(ROLES.daimi).catch(()=>{});
   if (xpValue >= 14000) return member.roles.add(ROLES.sadik).catch(()=>{});
   if (xpValue >= 6500) return member.roles.add(ROLES.aktif).catch(()=>{});
@@ -123,18 +115,16 @@ client.on("messageCreate", async (message) => {
   const txt = message.content.toLowerCase();
 
   if (!xp[id]) xp[id] = 0;
+  if (!money[id]) money[id] = 0;
   if (!cooldown[id]) cooldown[id] = 0;
   if (!curse[id]) curse[id] = 0;
 
-  // ================= LINK ENGEL =================
+  // ================= LINK =================
 
   if (LINK_REGEX.test(txt)) {
-
     await message.delete().catch(()=>{});
-
     if (message.member?.moderatable)
       message.member.timeout(60 * 60 * 1000);
-
     return message.channel.send("🔗 Link yasak → 1 saat mute");
   }
 
@@ -143,50 +133,121 @@ client.on("messageCreate", async (message) => {
   const clean = txt.replace(/0/g,"o").replace(/1/g,"i").replace(/3/g,"e");
 
   if (BAD_WORDS.some(w => clean.includes(w))) {
-
     await message.delete().catch(()=>{});
-
     curse[id]++;
 
     if (curse[id] >= 3) {
       curse[id] = 0;
-
       if (message.member?.moderatable)
         message.member.timeout(5 * 60 * 1000);
-
       return message.channel.send("⚠️ 3 küfür → 5 dk mute");
     }
 
     return message.channel.send(`⚠️ Küfür ${curse[id]}/3`);
   }
 
-  // ================= XP SYSTEM (2 DK) =================
+  // ================= XP + PARA =================
 
   if (now - cooldown[id] >= 120000) {
 
     let xpGain = Math.floor(Math.random() * 21) + 10;
+    let moneyGain = Math.floor(Math.random() * 901) + 100;
 
     if (message.member.roles.cache.has(SENOR_ROLE)) {
       xpGain *= 1.3;
+      moneyGain *= 1.3;
     }
 
-    if (boostActive[id] && boostActive[id] > Date.now()) {
+    if (boost[id] && boost[id] > Date.now()) {
       xpGain *= 2;
+      moneyGain *= 2;
     }
 
     xp[id] += Math.floor(xpGain);
+    money[id] += Math.floor(moneyGain);
 
     cooldown[id] = now;
 
     save("./data/xp.json", xp);
+    save("./data/money.json", money);
 
     updateRoles(message.member, xp[id]);
+  }
+
+  // ================= TOP10 =================
+
+  if (message.content === "!top10") {
+
+    const top = Object.entries(xp)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,10)
+      .map((u,i)=>`#${i+1} <@${u[0]}> ⭐ ${u[1]}`)
+      .join("\n");
+
+    return message.channel.send(`🏆 TOP10\n\n${top}`);
   }
 
   // ================= BASIC =================
 
   if (message.content === "!xp")
     return message.reply(`⭐ XP: ${xp[id]}`);
+
+  if (message.content === "!param")
+    return message.reply(`💰 Para: ${money[id]}`);
+
+  // ================= SHOP =================
+
+  if (message.content === "!shop") {
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("buy_senor")
+        .setLabel("👑 SENOR")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return message.channel.send({ content:"🛒 SHOP", components:[row] });
+  }
+
+  // ================= OWNER =================
+
+  if (message.content.startsWith("!xpver")) {
+    if (message.author.id !== OWNER_ID) return;
+
+    const u = message.mentions.members.first();
+    const a = Number(message.content.split(" ")[2]);
+
+    xp[u.id] += a;
+
+    save("./data/xp.json", xp);
+    updateRoles(u, xp[u.id]);
+
+    return message.reply("⭐ XP verildi");
+  }
+});
+
+// ================= BUTTON =================
+
+client.on("interactionCreate", async (i) => {
+
+  if (!i.isButton()) return;
+
+  const id = i.user.id;
+
+  if (i.customId === "buy_senor") {
+
+    if (money[id] < 50000)
+      return i.reply({ content:"❌ para yok", ephemeral:true });
+
+    money[id] -= 50000;
+
+    const m = i.guild.members.cache.get(id);
+    m.roles.add(SENOR_ROLE).catch(()=>{});
+
+    save("./data/money.json", money);
+
+    return i.reply({ content:"👑 SENOR alındı", ephemeral:true });
+  }
 });
 
 // ================= LOGIN =================

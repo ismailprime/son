@@ -44,7 +44,10 @@ let xp = load("./data/xp.json", {});
 let money = load("./data/money.json", {});
 let cooldown = {};
 let curse = {};
-let giveaways = load("./data/giveaways.json", {});
+
+// ================= GIVEAWAY =================
+
+let giveaways = {};
 
 // ================= CONFIG =================
 
@@ -61,7 +64,7 @@ const LINK_REGEX = /(https?:\/\/|www\.)/i;
 const BAD_WORDS = [
   "amk","oç","siktir","fuck","shit","piç","aq","amq","yarrak",
   "orospu","mal","salak","gerizekalı","aptal","bitch",
-  "dick","ass","bok","gavat","pezevenk","ibne"
+  "ass","bok","gavat","pezevenk","ibne","dick","wtf"
 ];
 
 // ================= ROLE SYSTEM =================
@@ -81,7 +84,7 @@ async function updateRoles(member, xpValue) {
   if (xpValue >= 1000) return member.roles.add(ROLES.caylak).catch(()=>{});
 }
 
-// ================= MESSAGE SYSTEM =================
+// ================= MESSAGE =================
 
 client.on("messageCreate", async (message) => {
 
@@ -90,6 +93,8 @@ client.on("messageCreate", async (message) => {
   const id = message.author.id;
   const now = Date.now();
   const txt = message.content.toLowerCase();
+
+  const args = message.content.trim().split(/\s+/);
 
   if (!xp[id]) xp[id] = 0;
   if (!money[id]) money[id] = 0;
@@ -115,6 +120,7 @@ client.on("messageCreate", async (message) => {
     curse[id]++;
 
     if (curse[id] >= 3) {
+
       curse[id] = 0;
 
       if (message.member?.moderatable)
@@ -140,29 +146,23 @@ client.on("messageCreate", async (message) => {
     updateRoles(message.member, xp[id]);
   }
 
-  // 📌 KOMUTLAR
+  // ================= BASIC =================
+
   if (message.content === "!xp")
     return message.reply(`⭐ XP: ${xp[id] || 0}`);
 
   if (message.content === "!param")
     return message.reply(`💰 Para: ${money[id] || 0}`);
-});
 
-// ================= OWNER KOMUTLARI =================
+  // ================= OWNER XP =================
 
-client.on("messageCreate", async (message) => {
-
-  if (message.author.bot) return;
-
-  const args = message.content.split(" ");
-  const user = message.mentions.members.first();
-  const amount = Number(args[2]);
-
-  // ⭐ XP VER
   if (message.content.startsWith("!xpver")) {
 
     if (message.author.id !== OWNER_ID)
       return;
+
+    const user = message.mentions.members.first();
+    const amount = Number(args[2]);
 
     if (!user || !amount || isNaN(amount))
       return message.reply("!xpver @kişi 100");
@@ -176,11 +176,15 @@ client.on("messageCreate", async (message) => {
     return message.channel.send(`⭐ ${amount} XP verildi`);
   }
 
-  // 💰 PARA VER
+  // ================= OWNER PARA =================
+
   if (message.content.startsWith("!paraver")) {
 
     if (message.author.id !== OWNER_ID)
       return;
+
+    const user = message.mentions.members.first();
+    const amount = Number(args[2]);
 
     if (!user || !amount || isNaN(amount))
       return message.reply("!paraver @kişi 100");
@@ -191,53 +195,49 @@ client.on("messageCreate", async (message) => {
 
     return message.channel.send(`💰 ${amount} para verildi`);
   }
-});
 
-// ================= GIVEAWAY =================
+  // ================= ÇEKİLİŞ =================
 
-client.on("messageCreate", async (message) => {
+  if (message.content.startsWith("!cekilis")) {
 
-  if (message.author.bot) return;
-  if (!message.content.startsWith("!cekilis")) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
+      return;
 
-  if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
-    return;
+    let time = args[1] || "1d";
 
-  const args = message.content.split(" ");
-  let time = args[1] || "1d";
+    let ms = 86400000;
 
-  let ms = 86400000;
+    if (time.endsWith("m")) ms = parseInt(time) * 60000;
+    else if (time.endsWith("h")) ms = parseInt(time) * 3600000;
+    else if (time.endsWith("d")) ms = parseInt(time) * 86400000;
 
-  if (time.endsWith("m")) ms = parseInt(time) * 60000;
-  else if (time.endsWith("h")) ms = parseInt(time) * 3600000;
-  else if (time.endsWith("d")) ms = parseInt(time) * 86400000;
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("join_giveaway")
+        .setLabel("🎉 Katıl")
+        .setStyle(ButtonStyle.Primary)
+    );
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("join_giveaway")
-      .setLabel("🎉 Katıl")
-      .setStyle(ButtonStyle.Primary)
-  );
+    const msg = await message.channel.send({
+      content: `🎉 ÇEKİLİŞ\n⏰ Süre: ${time}`,
+      components: [row]
+    });
 
-  const msg = await message.channel.send({
-    content: `🎉 ÇEKİLİŞ\n⏰ Süre: ${time}`,
-    components: [row]
-  });
+    giveaways[msg.id] = [];
 
-  if (!giveaways[msg.id]) giveaways[msg.id] = [];
+    setTimeout(() => {
 
-  setTimeout(() => {
+      const list = giveaways[msg.id];
 
-    const list = giveaways[msg.id];
+      if (!list || list.length === 0)
+        return message.channel.send("❌ Katılım yok");
 
-    if (!list || list.length === 0)
-      return message.channel.send("❌ Katılım yok");
+      const winner = list[Math.floor(Math.random() * list.length)];
 
-    const winner = list[Math.floor(Math.random() * list.length)];
+      message.channel.send(`🎉 Kazanan: <@${winner}>`);
 
-    message.channel.send(`🎉 Kazanan: <@${winner}>`);
-
-  }, ms);
+    }, ms);
+  }
 });
 
 // ================= BUTTON =================

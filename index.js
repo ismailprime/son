@@ -29,6 +29,7 @@ const client = new Client({
 const OWNER_ID = "1003708560728920165";
 const LOG_CHANNEL_ID = "1512629605830496257";
 const MEMBER_ROLE = "1506370448814899280";
+const SENOR_ROLE = "1515780264779841689";
 
 const ROLES = {
   caylak: "1515752720433152050",
@@ -37,8 +38,6 @@ const ROLES = {
   daimi: "1515770549870264330",
   special: "1515779632761143540"
 };
-
-const SENOR_ROLE = "1515780264779841689";
 
 // ================= DATA =================
 
@@ -56,8 +55,18 @@ let xp = load("./data/xp.json", {});
 let money = load("./data/money.json", {});
 let inventory = load("./data/inventory.json", {});
 let cooldown = {};
-let curse = {};
 let boostActive = {};
+let giveaways = {};
+let curse = {};
+
+// ================= BAD WORD SYSTEM =================
+
+const BAD_WORDS = [
+  "amk","oç","aq","amq","siktir","sik","sikeyim","sikik",
+  "orospu","piç","pezevenk","gavat","ibne","yarrak",
+  "mal","salak","gerizekalı","aptal",
+  "fuck","shit","bitch","ass","dick","wtf","cunt"
+];
 
 // ================= ROLE SYSTEM =================
 
@@ -73,7 +82,6 @@ async function updateRoles(member, xpValue) {
 
     await member.roles.add(ROLES.special).catch(()=>{});
 
-    // 🔥 PRESTIGE RESET
     xp[member.id] = 0;
     money[member.id] = 0;
 
@@ -92,19 +100,13 @@ async function updateRoles(member, xpValue) {
 // ================= WELCOME =================
 
 client.on("guildMemberAdd", (member) => {
-
   member.roles.add(MEMBER_ROLE).catch(()=>{});
 
-  const channel =
-    member.guild.systemChannel ||
-    member.guild.channels.cache.get(LOG_CHANNEL_ID);
-
-  if (!channel) return;
-
-  channel.send(`👋 Hoşgeldin <@${member.id}>!`);
+  const ch = member.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (ch) ch.send(`👋 Hoşgeldin <@${member.id}>`);
 });
 
-// ================= PANEL =================
+// ================= MESSAGE =================
 
 client.on("messageCreate", async (message) => {
 
@@ -113,7 +115,6 @@ client.on("messageCreate", async (message) => {
   const id = message.author.id;
   const now = Date.now();
   const txt = message.content.toLowerCase();
-  const args = message.content.split(/\s+/);
 
   if (!xp[id]) xp[id] = 0;
   if (!money[id]) money[id] = 0;
@@ -121,41 +122,47 @@ client.on("messageCreate", async (message) => {
   if (!cooldown[id]) cooldown[id] = 0;
   if (!curse[id]) curse[id] = 0;
 
-  // ================= PANEL =================
+  // ================= KÜFÜR =================
+  const clean = txt
+    .replace(/0/g,"o")
+    .replace(/1/g,"i")
+    .replace(/3/g,"e")
+    .replace(/@/g,"a")
+    .replace(/\$/g,"s");
 
-  if (message.content === "!panel") {
+  if (BAD_WORDS.some(w => clean.includes(w))) {
 
-    const row = new ActionRowBuilder().addComponents(
+    await message.delete().catch(()=>{});
 
-      new ButtonBuilder()
-        .setCustomId("xpal")
-        .setLabel("💰 PARA → XP")
-        .setStyle(ButtonStyle.Success),
+    curse[id]++;
 
-      new ButtonBuilder()
-        .setCustomId("xptopara")
-        .setLabel("⭐ XP → PARA")
-        .setStyle(ButtonStyle.Danger),
+    if (curse[id] >= 3) {
 
-      new ButtonBuilder()
-        .setCustomId("rank")
-        .setLabel("👑 RANK")
-        .setStyle(ButtonStyle.Primary),
+      curse[id] = 0;
 
-      new ButtonBuilder()
-        .setCustomId("leaderboard")
-        .setLabel("🏆 TOP 10")
-        .setStyle(ButtonStyle.Secondary)
+      if (message.member?.moderatable)
+        message.member.timeout(5 * 60 * 1000);
 
-    );
+      return message.channel.send("⚠️ 3 küfür → 5 dk mute");
+    }
 
-    return message.channel.send({
-      content: "🎛️ PANEL",
-      components: [row]
-    });
+    return message.channel.send(`⚠️ Küfür sayısı: ${curse[id]}/3`);
   }
 
-  // ================= ECONOMY =================
+  // ================= PANEL / SHOP =================
+
+  if (message.content === "!shop") {
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("buy_xp").setLabel("💰 PARA→XP").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("buy_money").setLabel("⭐ XP→PARA").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("shop_info").setLabel("ℹ️ BİLGİ").setStyle(ButtonStyle.Primary)
+    );
+
+    return message.channel.send({ content: "🛒 SHOP", components: [row] });
+  }
+
+  // ================= XP / PARA =================
 
   if (now - cooldown[id] >= 120000) {
 
@@ -163,13 +170,13 @@ client.on("messageCreate", async (message) => {
     let moneyGain = Math.floor(Math.random() * 901) + 100;
 
     if (message.member.roles.cache.has(SENOR_ROLE)) {
-      xpGain = Math.floor(xpGain * 1.3);
-      moneyGain = Math.floor(moneyGain * 1.3);
+      xpGain *= 1.3;
+      moneyGain *= 1.3;
     }
 
     if (message.member.roles.cache.has(ROLES.special)) {
-      xpGain = Math.floor(xpGain * 1.6);
-      moneyGain = Math.floor(moneyGain * 1.6);
+      xpGain *= 1.6;
+      moneyGain *= 1.6;
     }
 
     if (boostActive[id] && boostActive[id] > Date.now()) {
@@ -177,8 +184,8 @@ client.on("messageCreate", async (message) => {
       moneyGain *= 2;
     }
 
-    xp[id] += xpGain;
-    money[id] += moneyGain;
+    xp[id] += Math.floor(xpGain);
+    money[id] += Math.floor(moneyGain);
 
     cooldown[id] = now;
 
@@ -188,62 +195,47 @@ client.on("messageCreate", async (message) => {
     updateRoles(message.member, xp[id]);
   }
 
-  // ================= COMMANDS =================
+  // ================= OWNER =================
 
-  if (message.content === "!xp")
-    return message.reply(`⭐ XP: ${xp[id]}`);
+  if (message.content.startsWith("!xpver")) {
 
-  if (message.content === "!param")
-    return message.reply(`💰 Para: ${money[id]}`);
+    if (message.author.id !== OWNER_ID) return;
 
-  // ================= XP → PARA =================
+    const user = message.mentions.members.first();
+    const amount = Number(message.content.split(" ")[2]);
 
-  if (message.content === "!xpal") {
+    if (!user || !amount) return;
 
-    const gain = Math.floor(money[id] / 50);
-
-    xp[id] += gain;
-    money[id] -= gain * 50;
+    xp[user.id] = (xp[user.id] || 0) + amount;
 
     save("./data/xp.json", xp);
+
+    updateRoles(user, xp[user.id]);
+
+    return message.reply(`⭐ XP verildi`);
+  }
+
+  if (message.content.startsWith("!paraver")) {
+
+    if (message.author.id !== OWNER_ID) return;
+
+    const user = message.mentions.members.first();
+    const amount = Number(message.content.split(" ")[2]);
+
+    if (!user || !amount) return;
+
+    money[user.id] = (money[user.id] || 0) + amount;
+
     save("./data/money.json", money);
 
-    return message.reply(`🔄 ${gain} XP`);
+    return message.reply(`💰 Para verildi`);
   }
 
-  // ================= SHOP =================
+  if (message.content === "!xp")
+    return message.reply(`⭐ ${xp[id]}`);
 
-  if (message.content === "!shop") {
-    return message.channel.send("🛒 premium_pass 15000 | boost 10000 | king 25000");
-  }
-
-  if (message.content.startsWith("!satinal")) {
-
-    const item = args[1];
-    if (!inventory[id]) inventory[id] = [];
-
-    const items = {
-      premium_pass: 15000,
-      boost: 10000,
-      king: 25000
-    };
-
-    if (!items[item]) return;
-    if (money[id] < items[item]) return;
-
-    money[id] -= items[item];
-    inventory[id].push(item);
-
-    save("./data/money.json", money);
-    save("./data/inventory.json", inventory);
-
-    return message.reply("✅ alındı");
-  }
-
-  if (message.content === "!envanter") {
-    return message.reply(inventory[id].join(", ") || "boş");
-  }
-
+  if (message.content === "!param")
+    return message.reply(`💰 ${money[id]}`);
 });
 
 // ================= BUTTONS =================
@@ -257,8 +249,7 @@ client.on("interactionCreate", async (i) => {
   if (!xp[id]) xp[id] = 0;
   if (!money[id]) money[id] = 0;
 
-  // 💰 PARA → XP
-  if (i.customId === "xpal") {
+  if (i.customId === "buy_xp") {
 
     const gain = Math.floor(money[id] / 50);
 
@@ -268,11 +259,10 @@ client.on("interactionCreate", async (i) => {
     save("./data/xp.json", xp);
     save("./data/money.json", money);
 
-    return i.reply({ content: `🔄 ${gain} XP`, ephemeral: true });
+    return i.reply({ content: `💰 ${gain} XP`, ephemeral: true });
   }
 
-  // ⭐ XP → PARA
-  if (i.customId === "xptopara") {
+  if (i.customId === "buy_money") {
 
     const gain = Math.floor(xp[id] / 10);
 
@@ -282,52 +272,15 @@ client.on("interactionCreate", async (i) => {
     save("./data/xp.json", xp);
     save("./data/money.json", money);
 
-    return i.reply({ content: `💰 ${gain} para`, ephemeral: true });
+    return i.reply({ content: `⭐ ${gain} para`, ephemeral: true });
   }
 
-  // 👑 RANK
-  if (i.customId === "rank") {
-
-    let rank = "Çaylak";
-
-    if (xp[id] >= 50000) rank = "🌟 Special";
-    else if (xp[id] >= 25000) rank = "👑 Daimi";
-    else if (xp[id] >= 14000) rank = "💎 Sadık";
-    else if (xp[id] >= 6500) rank = "⚡ Aktif";
-
+  if (i.customId === "shop_info") {
     return i.reply({
-      content: `👑 ${rank}\n⭐ ${xp[id]}\n💰 ${money[id]}`,
+      content: "💰 50 para = 1 XP | ⭐ 10 XP = 1 para",
       ephemeral: true
     });
   }
-
-  // 🏆 LEADERBOARD
-  if (i.customId === "leaderboard") {
-
-    const topXP = Object.entries(xp)
-      .sort((a,b) => b[1]-a[1])
-      .slice(0,10)
-      .map((u,i)=>`#${i+1} <@${u[0]}> ⭐ ${u[1]}`)
-      .join("\n");
-
-    const topMoney = Object.entries(money)
-      .sort((a,b) => b[1]-a[1])
-      .slice(0,10)
-      .map((u,i)=>`#${i+1} <@${u[0]}> 💰 ${u[1]}`)
-      .join("\n");
-
-    return i.reply({
-      content: `🏆 TOP 10
-
-⭐ XP:
-${topXP || "boş"}
-
-💰 PARA:
-${topMoney || "boş"}`,
-      ephemeral: true
-    });
-  }
-
 });
 
 // ================= LOGIN =================

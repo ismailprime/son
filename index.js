@@ -28,6 +28,10 @@ const client = new Client({
 
 const OWNER_ID = "1003708560728920165";
 
+// ================= LOG CHANNEL =================
+
+const LOG_CHANNEL_ID = "1512629605830496257";
+
 // ================= DATA =================
 
 function load(file, def) {
@@ -44,9 +48,6 @@ let xp = load("./data/xp.json", {});
 let money = load("./data/money.json", {});
 let cooldown = {};
 let curse = {};
-
-// ================= GIVEAWAY =================
-
 let giveaways = {};
 
 // ================= CONFIG =================
@@ -84,6 +85,46 @@ async function updateRoles(member, xpValue) {
   if (xpValue >= 1000) return member.roles.add(ROLES.caylak).catch(()=>{});
 }
 
+// ================= HOŞGELDİN =================
+
+client.on("guildMemberAdd", async (member) => {
+  const channel =
+    member.guild.systemChannel ||
+    member.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+  if (!channel) return;
+
+  channel.send(`👋 Hoşgeldin <@${member.id}>! Sunucuya katıldın 🎉`);
+});
+
+// ================= MESSAGE DELETE =================
+
+client.on("messageDelete", async (message) => {
+  if (!message.guild) return;
+
+  const log = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+
+  log.send(`🗑️ MESAJ SİLİNDİ
+👤 ${message.author?.tag || "Bilinmiyor"}
+💬 ${message.content || "Boş"}`);
+});
+
+// ================= MESSAGE UPDATE =================
+
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+  if (!oldMessage.guild) return;
+  if (oldMessage.content === newMessage.content) return;
+
+  const log = oldMessage.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+
+  log.send(`✏️ MESAJ DÜZENLENDİ
+👤 ${oldMessage.author?.tag}
+📌 Eski: ${oldMessage.content}
+📌 Yeni: ${newMessage.content}`);
+});
+
 // ================= MESSAGE =================
 
 client.on("messageCreate", async (message) => {
@@ -93,7 +134,6 @@ client.on("messageCreate", async (message) => {
   const id = message.author.id;
   const now = Date.now();
   const txt = message.content.toLowerCase();
-
   const args = message.content.trim().split(/\s+/);
 
   if (!xp[id]) xp[id] = 0;
@@ -101,38 +141,30 @@ client.on("messageCreate", async (message) => {
   if (!cooldown[id]) cooldown[id] = 0;
   if (!curse[id]) curse[id] = 0;
 
-  // 🔗 LINK ENGEL
+  // LINK
   if (LINK_REGEX.test(txt)) {
-
     await message.delete().catch(()=>{});
-
     if (message.member?.moderatable)
-      message.member.timeout(60 * 60 * 1000);
-
+      message.member.timeout(3600000);
     return message.channel.send("🔗 Link → 1 saat mute");
   }
 
-  // 💬 KÜFÜR SİSTEMİ
+  // CURSE
   if (BAD_WORDS.some(w => txt.includes(w))) {
-
     await message.delete().catch(()=>{});
-
     curse[id]++;
 
     if (curse[id] >= 3) {
-
       curse[id] = 0;
-
       if (message.member?.moderatable)
-        message.member.timeout(5 * 60 * 1000);
-
+        message.member.timeout(300000);
       return message.channel.send("⚠️ 3 küfür → 5 dk mute");
     }
 
     return message.channel.send(`⚠️ Küfür: ${curse[id]}/3`);
   }
 
-  // 💰 XP + PARA (2 DK)
+  // XP + MONEY
   if (now - cooldown[id] >= 120000) {
 
     xp[id] += Math.floor(Math.random() * 21) + 10;
@@ -146,65 +178,51 @@ client.on("messageCreate", async (message) => {
     updateRoles(message.member, xp[id]);
   }
 
-  // ================= BASIC =================
-
+  // COMMANDS
   if (message.content === "!xp")
     return message.reply(`⭐ XP: ${xp[id] || 0}`);
 
   if (message.content === "!param")
     return message.reply(`💰 Para: ${money[id] || 0}`);
 
-  // ================= OWNER XP =================
-
+  // OWNER XP
   if (message.content.startsWith("!xpver")) {
-
-    if (message.author.id !== OWNER_ID)
-      return;
+    if (message.author.id !== OWNER_ID) return;
 
     const user = message.mentions.members.first();
     const amount = Number(args[2]);
 
-    if (!user || !amount || isNaN(amount))
-      return message.reply("!xpver @kişi 100");
+    if (!user || !amount) return;
 
     xp[user.id] = (xp[user.id] || 0) + amount;
-
     save("./data/xp.json", xp);
-
     updateRoles(user, xp[user.id]);
 
-    return message.channel.send(`⭐ ${amount} XP verildi`);
+    return message.channel.send(`⭐ XP verildi`);
   }
 
-  // ================= OWNER PARA =================
-
+  // OWNER MONEY
   if (message.content.startsWith("!paraver")) {
-
-    if (message.author.id !== OWNER_ID)
-      return;
+    if (message.author.id !== OWNER_ID) return;
 
     const user = message.mentions.members.first();
     const amount = Number(args[2]);
 
-    if (!user || !amount || isNaN(amount))
-      return message.reply("!paraver @kişi 100");
+    if (!user || !amount) return;
 
     money[user.id] = (money[user.id] || 0) + amount;
-
     save("./data/money.json", money);
 
-    return message.channel.send(`💰 ${amount} para verildi`);
+    return message.channel.send(`💰 para verildi`);
   }
 
-  // ================= ÇEKİLİŞ =================
-
+  // GIVEAWAY (aynı bırakıldı)
   if (message.content.startsWith("!cekilis")) {
 
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return;
 
     let time = args[1] || "1d";
-
     let ms = 86400000;
 
     if (time.endsWith("m")) ms = parseInt(time) * 60000;
@@ -219,23 +237,18 @@ client.on("messageCreate", async (message) => {
     );
 
     const msg = await message.channel.send({
-      content: `🎉 ÇEKİLİŞ\n⏰ Süre: ${time}`,
+      content: `🎉 ÇEKİLİŞ\n⏰ ${time}`,
       components: [row]
     });
 
     giveaways[msg.id] = [];
 
     setTimeout(() => {
-
       const list = giveaways[msg.id];
-
-      if (!list || list.length === 0)
-        return message.channel.send("❌ Katılım yok");
+      if (!list?.length) return;
 
       const winner = list[Math.floor(Math.random() * list.length)];
-
       message.channel.send(`🎉 Kazanan: <@${winner}>`);
-
     }, ms);
   }
 });
@@ -243,9 +256,7 @@ client.on("messageCreate", async (message) => {
 // ================= BUTTON =================
 
 client.on("interactionCreate", async (i) => {
-
   if (!i.isButton()) return;
-
   if (i.customId !== "join_giveaway") return;
 
   if (!giveaways[i.message.id])

@@ -6,7 +6,8 @@ const {
   Partials,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  EmbedBuilder
 } = require("discord.js");
 
 const fs = require("fs");
@@ -56,8 +57,9 @@ let xp = load("./data/xp.json", {});
 let money = load("./data/money.json", {});
 let cooldown = {};
 let curse = {};
+let daily = {};
+let streak = {};
 let giveaways = {};
-let boost = {};
 
 // ================= RULES =================
 
@@ -92,16 +94,28 @@ client.on("guildMemberAdd", (member) => {
 
   member.roles.add(MEMBER_ROLE).catch(()=>{});
 
-  const ch = member.guild.channels.cache.find(
-    c => c.name === "💬│genel-sohbet"
-  );
+  const ch = member.guild.channels.cache.find(c => c.name === "💬│genel-sohbet");
 
   if (ch) {
-    ch.send(
-      `👋 Hoşgeldin <@${member.id}>!\n` +
-      `📊 Sen ${member.guild.memberCount}. üyesisin 🎉`
-    );
+    ch.send(`👋 Hoşgeldin <@${member.id}>!\n📊 Sen ${member.guild.memberCount}. üyesisin 🎉`);
   }
+
+  const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (log) log.send(`📥 Yeni üye: <@${member.id}>`);
+});
+
+// ================= LOG SYSTEM =================
+
+client.on("messageDelete", async (m) => {
+  const log = m.guild?.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+  log.send(`🗑️ Silinen mesaj: ${m.content || "boş"} | ${m.author?.tag || "unknown"}`);
+});
+
+client.on("messageUpdate", async (oldM, newM) => {
+  const log = oldM.guild?.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+  log.send(`✏️ Edit: ${oldM.content} ➜ ${newM.content}`);
 });
 
 // ================= MESSAGE =================
@@ -118,13 +132,14 @@ client.on("messageCreate", async (message) => {
   if (!money[id]) money[id] = 0;
   if (!cooldown[id]) cooldown[id] = 0;
   if (!curse[id]) curse[id] = 0;
+  if (!daily[id]) daily[id] = 0;
+  if (!streak[id]) streak[id] = 0;
 
   // ================= LINK =================
 
   if (LINK_REGEX.test(txt)) {
     await message.delete().catch(()=>{});
-    if (message.member?.moderatable)
-      message.member.timeout(60 * 60 * 1000);
+    message.member.timeout(60 * 60 * 1000).catch(()=>{});
     return message.channel.send("🔗 Link yasak → 1 saat mute");
   }
 
@@ -138,8 +153,7 @@ client.on("messageCreate", async (message) => {
 
     if (curse[id] >= 3) {
       curse[id] = 0;
-      if (message.member?.moderatable)
-        message.member.timeout(5 * 60 * 1000);
+      message.member.timeout(5 * 60 * 1000).catch(()=>{});
       return message.channel.send("⚠️ 3 küfür → 5 dk mute");
     }
 
@@ -158,13 +172,8 @@ client.on("messageCreate", async (message) => {
       moneyGain *= 1.3;
     }
 
-    if (boost[id] && boost[id] > Date.now()) {
-      xpGain *= 2;
-      moneyGain *= 2;
-    }
-
-    xp[id] += Math.floor(xpGain);
-    money[id] += Math.floor(moneyGain);
+    xp[id] += xpGain;
+    money[id] += moneyGain;
 
     cooldown[id] = now;
 
@@ -172,6 +181,25 @@ client.on("messageCreate", async (message) => {
     save("./data/money.json", money);
 
     updateRoles(message.member, xp[id]);
+  }
+
+  // ================= DAILY =================
+
+  if (message.content === "!daily") {
+
+    if (Date.now() - daily[id] < 86400000)
+      return message.reply("⏳ 24 saat bekle");
+
+    daily[id] = Date.now();
+    streak[id]++;
+
+    xp[id] += 500 + streak[id] * 50;
+    money[id] += 1000;
+
+    save("./data/xp.json", xp);
+    save("./data/money.json", money);
+
+    return message.reply(`🎁 Daily alındı | streak: ${streak[id]}`);
   }
 
   // ================= TOP10 =================
@@ -184,7 +212,22 @@ client.on("messageCreate", async (message) => {
       .map((u,i)=>`#${i+1} <@${u[0]}> ⭐ ${u[1]}`)
       .join("\n");
 
-    return message.channel.send(`🏆 TOP10\n\n${top}`);
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 TOP 10")
+      .setDescription(top || "veri yok");
+
+    return message.channel.send({ embeds:[embed] });
+  }
+
+  // ================= SHOP =================
+
+  if (message.content === "!shop") {
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("buy_senor").setLabel("👑 SENOR").setStyle(ButtonStyle.Primary)
+    );
+
+    return message.channel.send({ content:"🛒 SHOP", components:[row] });
   }
 
   // ================= BASIC =================
@@ -194,36 +237,6 @@ client.on("messageCreate", async (message) => {
 
   if (message.content === "!param")
     return message.reply(`💰 Para: ${money[id]}`);
-
-  // ================= SHOP =================
-
-  if (message.content === "!shop") {
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("buy_senor")
-        .setLabel("👑 SENOR")
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    return message.channel.send({ content:"🛒 SHOP", components:[row] });
-  }
-
-  // ================= OWNER =================
-
-  if (message.content.startsWith("!xpver")) {
-    if (message.author.id !== OWNER_ID) return;
-
-    const u = message.mentions.members.first();
-    const a = Number(message.content.split(" ")[2]);
-
-    xp[u.id] += a;
-
-    save("./data/xp.json", xp);
-    updateRoles(u, xp[u.id]);
-
-    return message.reply("⭐ XP verildi");
-  }
 });
 
 // ================= BUTTON =================
@@ -237,7 +250,7 @@ client.on("interactionCreate", async (i) => {
   if (i.customId === "buy_senor") {
 
     if (money[id] < 50000)
-      return i.reply({ content:"❌ para yok", ephemeral:true });
+      return i.reply({ content:"❌ yeterli para yok", ephemeral:true });
 
     money[id] -= 50000;
 

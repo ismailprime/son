@@ -24,6 +24,10 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
 });
 
+// ================= OWNER =================
+
+const OWNER_ID = "1003708560728920165";
+
 // ================= DATA =================
 
 function load(file, def) {
@@ -54,12 +58,10 @@ const ROLES = {
 
 const LINK_REGEX = /(https?:\/\/|www\.)/i;
 
-// 🔥 GENİŞLETİLMİŞ KÜFÜR LİSTESİ
 const BAD_WORDS = [
   "amk","oç","siktir","fuck","shit","piç","aq","amq","yarrak",
   "orospu","mal","salak","gerizekalı","aptal","bitch","dick",
-  "motherfucker","wtf","ass","bok","keriz","salaklık","amına",
-  "pezevenk","ibne","gavat","lavuk","dangalak","gerzek"
+  "wtf","ass","bok","pezevenk","gavat","ibne","dangalak"
 ];
 
 // ================= ROLE SYSTEM =================
@@ -89,7 +91,7 @@ client.on("messageCreate", async (message) => {
 
   const id = message.author.id;
   const now = Date.now();
-  const text = message.content.toLowerCase();
+  const txt = message.content.toLowerCase();
 
   if (!xp[id]) xp[id] = 0;
   if (!money[id]) money[id] = 0;
@@ -97,23 +99,24 @@ client.on("messageCreate", async (message) => {
   if (!curse[id]) curse[id] = 0;
 
   // 🔗 LINK ENGEL
-  if (LINK_REGEX.test(text)) {
+  if (LINK_REGEX.test(txt)) {
     await message.delete().catch(()=>{});
 
     if (message.member?.moderatable)
       message.member.timeout(60 * 60 * 1000);
 
-    return message.channel.send("🔗 Link yasak → 1 saat mute");
+    return message.channel.send("🔗 Link → 1 saat mute");
   }
 
-  // 💬 KÜFÜR SİSTEMİ (3 = 5 DK MUTE)
-  if (BAD_WORDS.some(w => text.includes(w))) {
+  // 💬 KÜFÜR (3 = 5 DK MUTE)
+  if (BAD_WORDS.some(w => txt.includes(w))) {
 
     await message.delete().catch(()=>{});
 
     curse[id]++;
 
     if (curse[id] >= 3) {
+
       curse[id] = 0;
 
       if (message.member?.moderatable)
@@ -125,7 +128,7 @@ client.on("messageCreate", async (message) => {
     return message.channel.send(`⚠️ Küfür: ${curse[id]}/3`);
   }
 
-  // 💰 XP + PARA (2 DK)
+  // 💰 XP + PARA (2 DK SABİT)
   if (now - cooldown[id] >= 120000) {
 
     xp[id] += Math.floor(Math.random() * 21) + 10;
@@ -139,7 +142,7 @@ client.on("messageCreate", async (message) => {
     updateRoles(message.member, xp[id]);
   }
 
-  // 📌 BASIC COMMANDS
+  // 📌 KOMUTLAR
   if (message.content === "!xp")
     return message.reply(`⭐ XP: ${xp[id] || 0}`);
 
@@ -147,12 +150,56 @@ client.on("messageCreate", async (message) => {
     return message.reply(`💰 Para: ${money[id] || 0}`);
 });
 
-// ================= GIVEAWAY =================
+// ================= OWNER XP/PARA =================
 
 client.on("messageCreate", async (message) => {
 
   if (message.author.bot) return;
 
+  const args = message.content.split(" ");
+  const user = message.mentions.members.first();
+  const amount = parseInt(args[2]);
+
+  // ⭐ XP VER
+  if (message.content.startsWith("!xpver")) {
+
+    if (message.author.id !== OWNER_ID)
+      return message.reply("❌ Yetkin yok");
+
+    if (!user || !amount)
+      return message.reply("!xpver @kişi 100");
+
+    xp[user.id] = (xp[user.id] || 0) + amount;
+
+    save("./data/xp.json", xp);
+
+    updateRoles(user, xp[user.id]);
+
+    return message.channel.send(`⭐ XP verildi: ${amount}`);
+  }
+
+  // 💰 PARA VER
+  if (message.content.startsWith("!paraver")) {
+
+    if (message.author.id !== OWNER_ID)
+      return message.reply("❌ Yetkin yok");
+
+    if (!user || !amount)
+      return message.reply("!paraver @kişi 100");
+
+    money[user.id] = (money[user.id] || 0) + amount;
+
+    save("./data/money.json", money);
+
+    return message.channel.send(`💰 Para verildi: ${amount}`);
+  }
+});
+
+// ================= GIVEAWAY =================
+
+client.on("messageCreate", async (message) => {
+
+  if (message.author.bot) return;
   if (!message.content.startsWith("!cekilis")) return;
 
   if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
@@ -175,7 +222,7 @@ client.on("messageCreate", async (message) => {
   );
 
   const msg = await message.channel.send({
-    content: `🎉 **ÇEKİLİŞ**\n⏰ Süre: ${time}`,
+    content: `🎉 ÇEKİLİŞ\n⏰ Süre: ${time}`,
     components: [row]
   });
 
@@ -183,9 +230,9 @@ client.on("messageCreate", async (message) => {
 
   setTimeout(() => {
 
-    const list = giveaways[msg.id];
+    const list = giveaways[msg.id] || [];
 
-    if (!list || list.length === 0)
+    if (list.length === 0)
       return message.channel.send("❌ Katılım yok");
 
     const winner = list[Math.floor(Math.random() * list.length)];
@@ -214,7 +261,7 @@ client.on("interactionCreate", async (i) => {
   return i.reply({ content: "🎉 Katıldın!", ephemeral: true });
 });
 
-// ================= SAVE GIVEAWAY =================
+// ================= SAVE =================
 
 setInterval(() => {
   save("./data/giveaways.json", giveaways);

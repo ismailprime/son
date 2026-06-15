@@ -293,7 +293,7 @@ client.on("interactionCreate", async (i) => {
     if (money[id] < 250000)
       return i.reply({ content:"❌ para yok", ephemeral:true });
 
-    money[id] -= 50000;
+    money[id] -= 250000;
 
     const m = i.guild.members.cache.get(id);
     m.roles.add(SENOR_ROLE).catch(()=>{});

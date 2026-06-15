@@ -7,8 +7,7 @@ const {
   PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder
+  ButtonStyle
 } = require("discord.js");
 
 const fs = require("fs");
@@ -58,8 +57,7 @@ let xp = load("./data/xp.json", {});
 let money = load("./data/money.json", {});
 let cooldown = {};
 let curse = {};
-let giveaways = {}; // ✅ ÇEKİLİŞ EKLENDİ
-let boost = {};
+let giveaways = {}; // ✅ GERİ EKLENDİ
 
 // ================= RULES =================
 
@@ -88,22 +86,49 @@ async function updateRoles(member, xpValue) {
   if (xpValue >= 1000) return member.roles.add(ROLES.caylak).catch(()=>{});
 }
 
+// ================= LOG SYSTEM =================
+
+// 🗑️ MESAJ SİLME
+client.on("messageDelete", async (message) => {
+
+  const log = message.guild?.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+
+  log.send(
+    `🗑️ MESAJ SİLİNDİ\n` +
+    `👤 Kullanıcı: ${message.author?.tag || "unknown"}\n` +
+    `💬 Mesaj: ${message.content || "boş"}`
+  );
+});
+
+// ✏️ MESAJ DÜZENLEME
+client.on("messageUpdate", async (oldM, newM) => {
+
+  const log = oldM.guild?.channels.cache.get(LOG_CHANNEL_ID);
+  if (!log) return;
+
+  log.send(
+    `✏️ MESAJ DÜZENLENDİ\n` +
+    `👤 Kullanıcı: ${oldM.author?.tag || "unknown"}\n` +
+    `📌 Eski: ${oldM.content}\n` +
+    `📌 Yeni: ${newM.content}`
+  );
+});
+
 // ================= WELCOME =================
 
 client.on("guildMemberAdd", (member) => {
 
   member.roles.add(MEMBER_ROLE).catch(()=>{});
 
-  const ch = member.guild.channels.cache.find(
-    c => c.name === "💬│genel-sohbet"
-  );
+  const ch = member.guild.channels.cache.find(c => c.name === "💬│genel-sohbet");
 
   if (ch) {
-    ch.send(
-      `👋 Hoşgeldin <@${member.id}>!\n` +
-      `📊 Sen ${member.guild.memberCount}. üyesisin 🎉`
-    );
+    ch.send(`👋 Hoşgeldin <@${member.id}>!\n📊 Sen ${member.guild.memberCount}. üyesisin 🎉`);
   }
+
+  const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (log) log.send(`📥 Yeni üye: <@${member.id}>`);
 });
 
 // ================= MESSAGE =================
@@ -121,11 +146,17 @@ client.on("messageCreate", async (message) => {
   if (!cooldown[id]) cooldown[id] = 0;
   if (!curse[id]) curse[id] = 0;
 
+  const isAdmin = message.member?.permissions?.has(PermissionsBitField.Flags.Administrator);
+
   // ================= LINK =================
 
   if (LINK_REGEX.test(txt)) {
+
+    if (isAdmin) return;
+
     await message.delete().catch(()=>{});
     message.member.timeout(60 * 60 * 1000).catch(()=>{});
+
     return message.channel.send("🔗 Link yasak → 1 saat mute");
   }
 
@@ -134,6 +165,9 @@ client.on("messageCreate", async (message) => {
   const clean = txt.replace(/0/g,"o").replace(/1/g,"i").replace(/3/g,"e");
 
   if (BAD_WORDS.some(w => clean.includes(w))) {
+
+    if (isAdmin) return;
+
     await message.delete().catch(()=>{});
     curse[id]++;
 
@@ -169,14 +203,6 @@ client.on("messageCreate", async (message) => {
     updateRoles(message.member, xp[id]);
   }
 
-  // ================= BASIC =================
-
-  if (message.content === "!xp")
-    return message.reply(`⭐ XP: ${xp[id]}`);
-
-  if (message.content === "!param")
-    return message.reply(`💰 Para: ${money[id]}`);
-
   // ================= TOP10 =================
 
   if (message.content === "!top10") {
@@ -204,7 +230,7 @@ client.on("messageCreate", async (message) => {
     return message.channel.send({ content:"🛒 SHOP", components:[row] });
   }
 
-  // ================= ÇEKİLİŞ =================
+  // ================= ÇEKİLİŞ (GERİ EKLENDİ) =================
 
   if (message.content.startsWith("!cekilis")) {
 
@@ -291,7 +317,7 @@ client.on("interactionCreate", async (i) => {
   if (i.customId === "buy_senor") {
 
     if (money[id] < 250000)
-      return i.reply({ content:"❌ para yok", ephemeral:true });
+      return i.reply({ content:"❌ 250K para lazım", ephemeral:true });
 
     money[id] -= 250000;
 
